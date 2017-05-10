@@ -8,4 +8,6 @@
 mkdir Build
 
 cd Build && cmake ..
+
+msbuild hsc.sln
 ```

@@ -11,17 +11,18 @@ struct childWorker {
 
 int roundRobinCounter = 0;
 int childWorkerCount = 0;
+int closedCount = 0;
 uv_loop_t* loop = NULL;
 
-void onNewConnection(uv_stream_t *server, int status) {
+void onNewConnection(uv_stream_t* server, int status) {
 	if (status == -1) {
 		return;
 	}
 
-	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+	uv_tcp_t* client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
 	uv_tcp_init(loop, client);
 	if (uv_accept(server, (uv_stream_t*)client) == 0) {
-		uv_write_t *writeReq = (uv_write_t*) malloc(sizeof(uv_write_t));
+		uv_write_t* writeReq = (uv_write_t*) malloc(sizeof(uv_write_t));
 		uv_buf_t dummy_buf = uv_buf_init("a", 1);
 		struct childWorker *worker = &workers[roundRobinCounter];
 		uv_write2(writeReq, (uv_stream_t*)&worker->pipe, &dummy_buf, 1, (uv_stream_t*)client, NULL);
@@ -32,6 +33,12 @@ void onNewConnection(uv_stream_t *server, int status) {
 }
 
 void close_process_handle(uv_process_t* worker, int64_t exitStatus, int termSignal) {
+	fprintf(stderr, "process %d exit: %d\n", *worker, exitStatus);
+	closedCount++;
+	if (closedCount == childWorkerCount) {
+		free(workers);
+		workers = NULL;
+	}
 }
 
 void setupWorkers(char* args[]) {
@@ -40,7 +47,6 @@ void setupWorkers(char* args[]) {
 	int cpuCount;
 	uv_cpu_info(&info, &cpuCount);
 	uv_free_cpu_info(info, cpuCount);
-
 	childWorkerCount = cpuCount;
 	
 	workers = calloc(cpuCount, sizeof(struct childWorker));
@@ -59,7 +65,6 @@ void setupWorkers(char* args[]) {
 
 		worker->options.exit_cb = close_process_handle;
 		worker->options.file = args[1];
-		// worker->options.args = args;
 
 		uv_spawn(loop, &worker->req, &worker->options);
 		printf("Started worker %d\n", worker->req.pid);

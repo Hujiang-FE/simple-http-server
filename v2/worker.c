@@ -4,7 +4,6 @@
 #include <string.h>
 #include <assert.h>
 #include "uv.h"
-#include "http_parser.h"
 
 uv_loop_t *loop;
 uv_pipe_t queue;
@@ -17,25 +16,25 @@ void allocBuffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
 	*buf = uv_buf_init((char*)malloc(suggested_size), suggested_size);
 }
 
-void close_cb(uv_handle_t* handle) {
+void closeCb(uv_handle_t* handle) {
 	free(handle);
 }
 
-void write_cb(uv_write_t* req, int status) {
-	uv_close((uv_handle_t*)req->handle, close_cb);
+void writeCb(uv_write_t* req, int status) {
+	uv_close((uv_handle_t*)req->handle, closeCb);
 	free(req);
 }
 
 void echoRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	fprintf(stderr, "nread: %d\n", nread);
 	if (nread == UV_EOF) {
-		uv_close((uv_handle_t*)stream, close_cb);
+		uv_close((uv_handle_t*)stream, closeCb);
 		return;
 	}
 
 	if (nread < 0) {
 		fprintf(stderr, "Read error: %s\n", uv_err_name(nread));
-		uv_close((uv_handle_t*)stream, close_cb);
+		uv_close((uv_handle_t*)stream, closeCb);
 		return;
 	}
 	
@@ -53,7 +52,12 @@ void echoRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	uv_buf_t* response = calloc(1, sizeof(uv_buf_t));
 	response->base = "http/1.1 200 OK\r\nConnection:close\r\nContent-Length:11\r\n\r\nhello wolrd\r\n\r\n";
 	response->len = strlen(response->base);
-	int r = uv_write(req, stream, response, 1, write_cb);
+	int r = uv_write(req, stream, response, 1, writeCb);
+	if (r) {
+		fprintf(stderr, "Error on writing client stream: %s\n", uv_strerror(r));
+		uv_close((uv_handle_t*)stream, closeCb);
+	}
+	free(response);
 }
 
 void onNewConnection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf) {
